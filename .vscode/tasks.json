@@ -1,0 +1,21 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build GBA",
+            "type": "shell",
+            "command": "make -j8",
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "PATH": "C:/devkitPro/msys2/usr/bin;${env:PATH}"
+                },
+                "shell": {
+                    "executable": "cmd.exe",
+                    "args": ["/d", "/c"]
+                }
+            },
+            "problemMatcher": "$gcc"
+        }
+    ]
+}
