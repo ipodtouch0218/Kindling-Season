@@ -44,7 +44,9 @@ private:
 public:
     log_slot& at(const bn::point &position) { return board_state.at(to_index(position)); }
     void place_log(const bn::point &position, log_orientation orientation);
+    void remove_log(const bn::point &grid_position);
     void swing_axe(const bn::point &position, axe_swing_direction direction);
+    bn::optional<bn::point> get_topmost_log(int grid_x);
     
     int calculate_drop_timer() const;
     bn::fixed calculate_drop_speed() const;

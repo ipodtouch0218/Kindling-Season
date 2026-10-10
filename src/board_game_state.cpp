@@ -1,6 +1,7 @@
 #include "board_game_state.h"
 
 #include "bn_affine_mat_attributes.h"
+#include "bn_optional.h"
 #include "bn_sprite_affine_mat_ptr.h"
 #include "bn_sprite_items_logs.h"
 #include "bn_regular_bg_items_game_board.h"
@@ -39,6 +40,16 @@ void board_game_state::tick() {
     }
 }
 
+bn::optional<bn::point> board_game_state::get_topmost_log(int grid_x) {
+    for (int row = 0; row < height_tiles(); row++) {
+        log_slot &log = at({ grid_x, row });
+        if (log.occupied) {
+            return { bn::point{ grid_x, row } };
+        }
+    }
+    return {};
+}
+
 void board_game_state::place_log(const bn::point &grid_position, log_orientation orientation) {
     log_slot &slot = at(grid_position);
     slot.occupied = true;
@@ -49,6 +60,12 @@ void board_game_state::place_log(const bn::point &grid_position, log_orientation
         slot.sprite->set_y(slot.sprite->y() - 1);
     }
     slot.sprite->set_z_order(grid_position.x() + grid_position.y());
+}
+
+void board_game_state::remove_log(const bn::point &grid_position) {
+    log_slot &slot = at(grid_position);
+    slot.occupied = false;
+    slot.sprite = bn::nullopt;
 }
 
 void board_game_state::swing_axe(const bn::point &grid_position, axe_swing_direction direction) {

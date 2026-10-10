@@ -1,14 +1,18 @@
 #include "hand.h"
 
 #include "bn_sprite_items_hands.h"
+#include "bn_sprite_tiles_ptr.h"
 #include "bn_keypad.h"
 
 #include "board_game_state.h"
 #include "utils.h"
 
+constexpr int hand_sprite_index_empty{ 0 };
+constexpr int hand_sprite_index_holding_vertical{ 1 };
+constexpr int hand_sprite_index_holding_horizontal{ 2 };
 
 hand::hand(board_game_state &state)
-    : sprite(bn::sprite_items::hands.create_sprite({}, 0))
+    : sprite(bn::sprite_items::hands.create_sprite({}, hand_sprite_index_empty))
 {
     column = state.width_tiles() / 2;
     row = -1;
@@ -66,7 +70,43 @@ void hand::tick(board_game_state &state) {
 
     // Swing / pick up
     if (bn::keypad::a_pressed()) {
+        if (axe_mode) {
 
+        } else {
+            auto topmost_log = state.get_topmost_log(column);
+            if (holding_log) {
+                // drop
+                if (!topmost_log.has_value()) {
+                    topmost_log = { column, state.height_tiles() };
+                }
+                if (topmost_log->y() > 0) {
+                    bn::point place_position = topmost_log.value();
+                    place_position.set_y(place_position.y() - 1);
+                    state.place_log(place_position, held_log_orientation);
+                    holding_log = false;
+
+                    sprite.set_tiles(bn::sprite_items::hands.tiles_item().create_tiles(hand_sprite_index_empty));
+                } else {
+                    // error sound
+                }
+            } else {
+                // hold
+                if (topmost_log.has_value()) {
+                    log_slot &log = state.at(topmost_log.value());
+                    holding_log = log.occupied;
+                    held_log_orientation = log.orientation;
+                    state.remove_log(topmost_log.value());
+
+                    sprite.set_tiles(bn::sprite_items::hands.tiles_item().create_tiles(
+                        (held_log_orientation == log_orientation::VERTICAL) 
+                            ? hand_sprite_index_holding_vertical 
+                            : hand_sprite_index_holding_horizontal
+                    ));
+                } else {
+                    // error sound
+                }
+            }
+        }
     }
 
     // Render
