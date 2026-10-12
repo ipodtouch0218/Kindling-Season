@@ -1,10 +1,13 @@
 #include "placing_log.h"
 
+#include "bn_sound_items.h"
 #include "bn_sprite_items_logs.h"
 #include "bn_keypad.h"
 #include "bn_log.h"
 
 #include "board_game_state.h"
+#include "enums.h"
+#include "utils.h"
 
 static void apply_sprite_orientation(bn::sprite_ptr &sprite, log_orientation orientation) {
     switch (orientation) {
@@ -43,6 +46,11 @@ placing_log::placing_log()
         bn::sprite_items::logs.create_sprite(sprite_screen_offsets.at(3), 0)
     })
 {
+    sprites.at(0).set_z_order(-4);
+    sprites.at(1).set_z_order(-3);
+    sprites.at(2).set_z_order(-1);
+    sprites.at(3).set_z_order(-2);
+    
     for (auto it = sprites.begin(); it != sprites.end(); it++) {
         it->set_visible(false);
     }
@@ -53,63 +61,83 @@ void placing_log::tick(board_game_state &state) {
         return;
     }
 
-    // Movement
-    bool tried_to_move = false;
-    bool move_successful = false;
+    // Move left / right
+    constexpr int direction_hold_repeat_delay_frames{ 20 };
+    constexpr int direction_hold_repeat_spam_frames{ 4 };
     
-    if (bn::keypad::left_pressed()) {
-        tried_to_move = true;
-        if (can_move_into(grid_position + bn::point{ -1, 0 }, state)) {
-            grid_position.set_x(grid_position.x() - 1);
-            move_successful = true;
-        }
-    } else if (bn::keypad::right_pressed()) {
-        tried_to_move = true;
-        if (can_move_into(grid_position + bn::point{ 1, 0 }, state)) {
-            grid_position.set_x(grid_position.x() + 1);
-            move_successful = true;
-        }
+    move_direction input_direction = move_direction::NONE;
+    if (bn::keypad::left_held()) {
+        input_direction = move_direction::LEFT;
+    } else if (bn::keypad::right_held()) {
+        input_direction = move_direction::RIGHT;
     }
     
+    bool move_successful = false;
+    if (input_direction != move_direction::NONE && (held_direction != input_direction || --hold_repeat_time == 0)) {
+        if (input_direction == move_direction::LEFT) {
+            if (can_move_into(grid_position + bn::point{ -1, 0 }, state)) {
+                grid_position.set_x(grid_position.x() - 1);
+                move_successful = true;
+            }
+        } else {
+            if (can_move_into(grid_position + bn::point{ 1, 0 }, state)) {
+                grid_position.set_x(grid_position.x() + 1);
+                move_successful = true;
+            }
+        }
+
+        hold_repeat_time = (held_direction != input_direction) ? direction_hold_repeat_delay_frames : direction_hold_repeat_spam_frames;
+    }
+    held_direction = input_direction;
+
     // Rotation
     bool tried_to_rotate = false;
     bool rotate_successful = false;
     if (bn::keypad::a_pressed()) {
         tried_to_rotate = true;
-        if (can_rotate(state)) {
+        if (can_rotate_cw(state)) {
             rotate_cw();
             rotate_successful = true;
         }
     }
     if (bn::keypad::b_pressed()) {
         tried_to_rotate = true;
-        if (can_rotate(state)) {
+        if (can_rotate_ccw(state)) {
             rotate_ccw();
             rotate_successful = true;
         }
     }
 
-    if (tried_to_rotate) {
-        // TODO play sound
-        if (rotate_successful) {
-
-        } else {
-
-        }
-    }
-
     // Falling
-    fall_progress += bn::fixed(0.33);
+    fall_progress += fall_speed;
     if (bn::keypad::down_held()) {
-        fall_progress += bn::fixed(2);    
+        fall_progress += fall_speed * 7;    
     }
 
     if (fall_progress >= state.tile_size_pixels().y()) {
         if (can_move_into(grid_position + bn::point{ 0, 1 }, state)) {
             grid_position.set_y(grid_position.y() + 1);
             fall_progress -= state.tile_size_pixels().y();
+            landing_delay = 0;
         } else {
-            place_onto_board(state);
+            if (++landing_delay > 10) {
+                place_onto_board(state);
+                landing_delay = 0;
+            } else {
+                fall_progress = state.tile_size_pixels().y();
+            }
+        }
+    }
+
+    // Sound
+    if (move_successful) {
+        bn::sound_items::move.play();
+    }
+    if (tried_to_rotate) {
+        if (rotate_successful) {
+            bn::sound_items::rotate.play();
+        } else {
+            bn::sound_items::error.play();
         }
     }
 
@@ -123,14 +151,33 @@ void placing_log::tick(board_game_state &state) {
     }
 }
 
-bool placing_log::can_rotate(const board_game_state &state) const {
+bool placing_log::can_rotate_cw(const board_game_state &state) const {
     for (int i = 0; i < orientations.size(); i++) {
-        if (orientations.at(i) != log_orientation::NONE) {
+        if (orientations.at(i) == log_orientation::NONE) {
             continue;
         }
         
-        bn::point check_position = grid_position + sprite_tile_offsets.at(i);
-        return !state.is_inside_grid(check_position) || !state.at(check_position).occupied();
+        bn::point tile_offset = sprite_tile_offsets.at((i + 1) % orientations.size());
+        bn::point check_position = grid_position + tile_offset;
+        if (!(state.is_inside_grid(check_position) && !state.at(check_position).occupied())) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool placing_log::can_rotate_ccw(const board_game_state &state) const {
+    for (int i = 0; i < orientations.size(); i++) {
+        if (orientations.at(i) == log_orientation::NONE) {
+            continue;
+        }
+        
+        bn::point tile_offset = sprite_tile_offsets.at((i - 1 + orientations.size()) % orientations.size());
+        bn::point check_position = grid_position + tile_offset;
+        if (!(state.is_inside_grid(check_position) && !state.at(check_position).occupied())) {
+            return false;
+        }
     }
 
     return true;
@@ -185,6 +232,8 @@ void placing_log::place_onto_board(board_game_state &state) {
     for (int i = 0; i < sprites.size(); i++) {
         apply_sprite_orientation(sprites.at(i), log_orientation::NONE);
     }
+
+    bn::sound_items::log_land.play();
 }
 
 void placing_log::spawn_at_top(board_game_state &state, bn::array<log_orientation, 4> new_orientations) {

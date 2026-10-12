@@ -4,8 +4,8 @@
 #include "bn_unique_ptr.h"
 
 enum class game_state {
-    MAIN_MENU,
-    BOARD
+    TITLE_SCREEN = 0,
+    GAME_BOARD = 1,
 };
 
 class game_state_runner {

@@ -4,15 +4,9 @@
 #include "bn_list.h"
 #include "bn_sprite_ptr.h"
 
+#include "axe_hit.h"
 #include "enums.h"
 
-enum class move_direction {
-    LEFT = -1,
-    NONE = 0,
-    RIGHT = 1
-};
-
-class log_slot;
 class board_game_state;
 class hand {
 private:
@@ -22,7 +16,7 @@ private:
     int row{};
 
     // I have no idea how to reference `board_largest_axis` here. in a clean way.
-    bn::list<log_slot*, 10> previous_axe_hits;
+    bn::list<axe_hit, 10> previous_axe_hits;
     bn::blending_fade_alpha_loop_action blending_loop{ 45, 1 };
 
     int swing_animation{};

@@ -11,3 +11,10 @@ enum class axe_swing_direction {
     DOWN,
     LEFT
 };
+
+enum class move_direction {
+    LEFT = -1,
+    NONE = 0,
+    RIGHT = 1
+};
+

@@ -5,6 +5,7 @@
 #include "bn_keypad.h"
 #include "bn_fixed.h"
 #include "bn_math.h"
+#include "bn_sound_items.h"
 #include "bn_sprite_items_axe_hands.h"
 #include "bn_sprite_tiles_ptr.h"
 
@@ -26,11 +27,15 @@ void hand::enable(board_game_state &state) {
     bn::blending::set_white_fade_color();
     blending_loop.reset();
     sprite.set_visible(true);
-    column = state.width_tiles() / 2;
-    row = 0;
+    sprite.set_rotation_angle(0);
+    if (!_active) {
+        column = state.width_tiles() / 2;
+        row = 0;
+        _active = true;
+    }
     swing_animation = 0;
-    has_swung = false;
-    _active = true;
+    update_axe_hits(state);
+    render(state);
 }
 
 void hand::disable() {
@@ -40,39 +45,44 @@ void hand::disable() {
 }
 
 void hand::tick(board_game_state &state) {
-    if (!has_swung) {
-        if (swing_animation > 0) {
-            swing_animation--;
-            
-            bn::fixed angle = top_swing_animation.at(top_swing_animation.size() - swing_animation - 1);
-            if (row > 0 && angle > 0) {
-                angle /= 2;
-            }
-            if (!sprite.horizontal_flip()) {
-                angle = 360 - angle;
-            }
-            sprite.set_rotation_angle_safe(angle);
+    if (swing_animation > 0) {
+        swing_animation--;
 
-            if (swing_animation == 0) {
-                axe_swing_direction swing_direction;
-                if (row == 0) {
-                    swing_direction = axe_swing_direction::DOWN;
-                } else if (column == 0) {
-                    swing_direction = axe_swing_direction::RIGHT;
-                } else {
-                    swing_direction = axe_swing_direction::LEFT;
-                }
-                
-                clear_axe_hits();
-                state.swing_axe({ column, row }, swing_direction);
-                has_swung = true;
-            }
-
-        } else if (bn::keypad::a_pressed()) {
-            swing_animation = top_swing_animation.size();
-        } else {
-            move(state);
+        bn::fixed angle = top_swing_animation.at(top_swing_animation.size() - swing_animation - 1);
+        if (row > 0 && angle > 0) {
+            angle /= 2;
         }
+        if (!sprite.horizontal_flip()) {
+            angle = 360 - angle;
+        }
+        sprite.set_rotation_angle_safe(angle);
+
+        if (swing_animation == 0) {
+            axe_swing_direction swing_direction;
+            if (row == 0) {
+                swing_direction = axe_swing_direction::DOWN;
+            } else if (column == 0) {
+                swing_direction = axe_swing_direction::RIGHT;
+            } else {
+                swing_direction = axe_swing_direction::LEFT;
+            }
+            
+            clear_axe_hits();
+            state.swing_axe({ column, row }, swing_direction);
+            enable(state);
+        }
+    } else if (bn::keypad::a_pressed()) {
+        if (previous_axe_hits.size() > 1) {
+            swing_animation = top_swing_animation.size();
+            bn::sound_items::axe_swing.play();
+        } else {
+            bn::sound_items::error.play();
+        }
+    } else if (bn::keypad::b_pressed()) {
+        disable();
+        return;
+    } else {
+        move(state);
     }
 
     blending_loop.update();
@@ -123,12 +133,15 @@ void hand::move(board_game_state &state) {
 
     if (moved) {
         update_axe_hits(state);
+        bn::sound_items::move.play();
     }
 }
 
 void hand::clear_axe_hits() {
     for (auto it = previous_axe_hits.begin(); it != previous_axe_hits.end(); it++) {
-        (*it)->sprite->set_blending_enabled(false);
+        if (it->slot->sprite.has_value()) {
+            it->slot->sprite->set_blending_enabled(false);
+        }
     }
     previous_axe_hits.clear();
 }
@@ -137,10 +150,12 @@ void hand::update_axe_hits(board_game_state &state) {
     clear_axe_hits();
 
     auto hits = state.find_axe_hits({ column, row }, get_swing_direction());
-    for (auto it = hits.begin(); it != hits.end(); it++) {
-        (*it)->sprite->set_blending_enabled(true);
+    if (hits.size() > 1) {
+        for (auto it = hits.begin(); it != hits.end(); it++) {
+            it->slot->sprite->set_blending_enabled(true);
+        }
+        previous_axe_hits = hits;
     }
-    previous_axe_hits = hits;
 }
 
 void hand::render(board_game_state &state) {
@@ -161,6 +176,9 @@ void hand::render(board_game_state &state) {
         } else {
             sprite_pos = state.to_screen({ column + 2, row });
         }
+    }
+    if (row == 0) {
+        sprite_pos.set_x(sprite_pos.x() + (sprite.horizontal_flip() ? 8 : -8));
     }
 
     // Animate bobbing up/down
